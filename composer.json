@@ -1,5 +1,5 @@
 {
-  "name": "contrib/webform-paypal-integration",
+  "name": "drupal/webform-paypal-integration",
   "description": "Integrates PayPal payments with Webform submissions.",
   "type": "drupal-module",
   "require": {
