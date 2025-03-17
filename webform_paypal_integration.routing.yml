@@ -1,0 +1,31 @@
+webform_paypal_integration.settings:
+  path: '/admin/config/webform/paypal-integration'
+  defaults:
+    _form: '\Drupal\webform_paypal_integration\Form\PaypalSettingsForm'
+    _title: 'PayPal Integration Settings'
+  requirements:
+    _permission: 'access content'
+    
+webform_paypal_integration.payment:
+  path: '/paypal/payment'
+  defaults:
+    _form: '\Drupal\webform_paypal_integration\Form\PaypalPaymentForm'
+    _title: 'Pay with PayPal'
+  requirements:
+    _permission: 'access content'
+
+paypal_integration.success:
+  path: '/paypal/success'
+  defaults:
+    _controller: 'Drupal\webform_paypal_integration\Controller\PaypalController::success'
+    _title: 'Payment Success'
+  requirements:
+    _permission: 'access content'
+
+paypal_integration.cancel:
+  path: '/paypal/cancel'
+  defaults:
+    _controller: 'Drupal\webform_paypal_integration\Controller\PaypalController::cancel'
+    _title: 'Payment Canceled'
+  requirements:
+    _permission: 'access content'

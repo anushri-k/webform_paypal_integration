@@ -1,0 +1,140 @@
+<?php
+
+use Drupal\Core\Form\FormStateInterface;
+use Symfony\Component\HttpFoundation\RedirectResponse;
+use Drupal\Core\StringTranslation\TranslatableMarkup;
+use Symfony\Component\HttpFoundation\Request;
+
+/**
+ * Implements hook_webform_component_info().
+ */
+function webform_paypal_integration_component_info() {
+  return [
+    'paypal' => [
+      'label' => new TranslatableMarkup('Paypal Button'),
+      'description' => new TranslatableMarkup('Paypal button to replace the submit button for this form'),
+      'features' => ['title_display' => FALSE],
+    ],
+  ];
+}
+
+/**
+ * Implements hook_permission().
+ */
+function webform_paypal_integration_permission() {
+  return [
+    'update payment status' => ['title' => new TranslatableMarkup('Update PayPal Payment Status')],
+    'use paypal sandbox' => ['title' => new TranslatableMarkup('Use PayPal in Sandbox Mode')],
+  ];
+}
+
+/**
+ * Implements hook_form_alter().
+ */
+function webform_paypal_integration_form_alter(&$form, FormStateInterface $form_state, $form_id) {
+  // Corrected condition to match webform client forms only.
+  if (strpos($form_id, 'webform_client_form_') === 0) {
+    if (isset($form['#action']) && strpos($form['#action'], 'edit')) {
+      $form['actions']['submit']['#value'] = new TranslatableMarkup('Update');
+    } else {
+      $webform_components = $form_state->getCompleteForm()['webform']['components'] ?? [];
+      foreach ($webform_components as $key => $value) {
+        if ($value['type'] === 'paypal') {
+          $form['actions']['submit']['#theme_wrappers'] = ['image_button'];
+          $form['actions']['submit']['#button_type'] = 'image';
+          $form['actions']['submit']['#src'] = webform_paypal_integration_button_url(
+            $value['extra']['type'],
+            $value['extra']['style'],
+            $value['extra']['language']
+          );
+          $form['#submit'][] = 'webform_paypal_integration_submit';
+        }
+      }
+    }
+  }
+}
+
+/**
+ * Builds PayPal button URL.
+ */
+function webform_paypal_integration_button_url($type, $style, $language) {
+  return 'https://www.paypal.com/' . $language . '/i/btn/' . $type . $style . '.gif';
+}
+
+/**
+ * Submit function to send user to PayPal after form submission.
+ */
+function webform_paypal_integration_submit(&$form, FormStateInterface $form_state) {
+  $submission_id = $form_state->getValue('details')['sid'] ?? NULL;
+  $nid = $form_state->getValue('details')['nid'] ?? NULL;
+  $node_path = \Drupal::service('path_alias.manager')->getAliasByPath('/node/' . $nid);
+
+  global $base_url;
+  $submission_url = $base_url . $node_path . '/submission/' . $submission_id;
+
+  $webform_components = $form_state->getCompleteForm()['webform']['components'] ?? [];
+  foreach ($webform_components as $key => $value) {
+    if ($value['type'] === 'paypal') {
+      $paypal_component_name = $value['form_key'];
+      $url = $value['extra']['transaction'] === 'live'
+        ? 'https://www.paypal.com/cgi-bin/webscr'
+        : 'https://www.sandbox.paypal.com/cgi-bin/webscr';
+    }
+  }
+
+  $post_data = [
+    'cmd' => '_s-xclick',
+    'hosted_button_id' => $form_state->getValue(['submitted_tree', $paypal_component_name, 'id']),
+    'custom' => $submission_url,
+  ];
+
+  $query = http_build_query($post_data);
+  $response = new RedirectResponse($url . '?' . $query);
+  $response->send();
+}
+
+/**
+ * Element validate handler.
+ */
+function webform_paypal_integration_validate($form, FormStateInterface &$form_state) {
+  $value = $form_state->getValue('value');
+  if (preg_match("/[^A-Z0-9]/", $value)) {
+    $form_state->setErrorByName('webform_paypal', new TranslatableMarkup('Please enter a valid button ID.'));
+  }
+}
+
+/**
+ * Handles PayPal IPN (Instant Payment Notification).
+ */
+function webform_paypal_integration_ipn(Request $request) {
+  // Read POST data from PayPal
+  $raw_post_data = file_get_contents('php://input');
+  $post_data = [];
+  parse_str($raw_post_data, $post_data);
+
+  // Verify IPN response with PayPal
+  $paypal_url = 'https://www.sandbox.paypal.com/cgi-bin/webscr';
+  $post_data['cmd'] = '_notify-validate';
+
+  $ch = curl_init($paypal_url);
+  curl_setopt($ch, CURLOPT_POST, true);
+  curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($post_data));
+  curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+  $paypal_response = curl_exec($ch);
+  curl_close($ch);
+
+  // If PayPal confirms IPN is valid
+  if ($paypal_response === "VERIFIED") {
+    \Drupal::database()->insert('paypal_transactions')
+      ->fields([
+        'txn_id' => $post_data['txn_id'],
+        'payer_email' => $post_data['payer_email'],
+        'amount' => $post_data['mc_gross'],
+        'currency' => $post_data['mc_currency'],
+        'payment_status' => $post_data['payment_status'],
+        'custom' => $post_data['custom'],
+        'created' => time(),
+      ])
+      ->execute();
+  }
+}

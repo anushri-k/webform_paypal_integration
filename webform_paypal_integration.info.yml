@@ -1,0 +1,8 @@
+name: 'Webform PayPal Integration'
+type: module
+description: 'Integrates PayPal with Webform for payments.'
+core_version_requirement: ^8 || ^9
+package: Webform
+dependencies:
+  - webform:webform
+configure: webform_paypal_integration.settings

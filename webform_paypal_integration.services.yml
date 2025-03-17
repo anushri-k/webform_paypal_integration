@@ -1,0 +1,5 @@
+services:
+  webform_paypal_integration.webform_handler:
+    class: Drupal\webform_paypal_integration\Plugin\WebformHandler\PaypalWebformHandler
+    tags:
+      - { name: webform.handler, category: form, label: "PayPal Integration" }
